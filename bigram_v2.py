@@ -1,6 +1,6 @@
 # Alexanader Ye 2025 
 
-# Adding a head of self-attention to Bigram Language model
+# Adding a decoding-only transformer to Bigram Language model
 
 import torch
 import torch.nn as nn
@@ -11,15 +11,16 @@ batch_size = 4 # how many indepedent sequences can you process in parallel?
 block_size = 8 # how big of a context do you want to train on?
 max_iters = 5000 # for training
 learning_rate = 1e-3 # self-attention can't tolerate high lr
-eval_interval = 500
-eval_iters = 200
-n_embd = 32 
-n_heads = 4
-dropout = 0.2
+eval_interval = 500 # how often to output loss
+eval_iters = 200 # for estimate_loss, how many tests to average against
+n_embd = 32 # internal embedding dim
+n_heads = 4 # how many heads of attention
+n_layer = 4 # how many layers of network do you want
+dropout = 0.1 # regularization
 
 torch.manual_seed(1337)
 
-with open("./data/snows.txt", "r", encoding='utf-8') as f:
+with open("./data/hemingway.txt", "r", encoding='utf-8') as f:
     content = f.read()
 
 # Create encoding functions for our model to understand
@@ -73,6 +74,7 @@ class Head(nn.Module):
         self.query = nn.Linear(n_embd, head_size, bias=False)
         self.value = nn.Linear(n_embd, head_size, bias=False)
         self.register_buffer('tril', torch.tril(torch.ones(block_size,block_size)))
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x): # input is (batch, time-step, channels or n_embd)
         B,T,C = x.shape
@@ -82,6 +84,7 @@ class Head(nn.Module):
         wei = q @ k.transpose(-2, -1) * C**-0.5 # (B,T,16) @ (B,16,T) -> (B,T,T), normalized by 1/sqrt(d_k)
         wei = wei.masked_fill(self.tril[:T,:T] == 0, float('-inf')) # prevents info from future tokens
         wei = F.softmax(wei, dim=-1) 
+        wei = self.dropout(wei) # randomly prevent some communication - prevents overfitting
         # weighted aggregation of values
         v = self.value(x) # (B,T,C)
         out = wei @ v # (B,T,T) @ (B,T,C) -> (B,T,C)
@@ -95,31 +98,61 @@ class MultiHeadSelfAttention(nn.Module):
     def __init__(self, num_heads, head_size):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)]) # initalize module list
+        self.projection = nn.Linear(num_heads*head_size, n_embd) # linear transformation back into residual pathway
+        self.dropout = nn.Dropout(dropout) # right before residual connection 
 
-    def forward(self, x):
-        return torch.cat([h(x) for h in self.heads], dim=-1) # concat along rows
+    def forward(self, x): # input is embeddings (B,T,C)
+        out = torch.cat([h(x) for h in self.heads], dim=-1) # concat along rows
+        return self.projection(out)
+
 
 class FeedForward(nn.Module):
     """ linear layer followed by a non-linearity """
     def __init__(self, n_embd):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(n_embd, n_embd),
+            # Attention is All You Need paper has the inner layer as dimentionality 4x input/output embeddings
+            nn.Linear(n_embd, 4 * n_embd),
             nn.ReLU(),
+            nn.Linear(4 * n_embd, n_embd), # projection layer
+            nn.Dropout(dropout) # right before residual connection 
         )
     
-    def forward(self, x):
+    def forward(self, x): # input is embeddings (B,T,C)
         return self.net(x)        
 
-# Adding attention mechanisms
+class Block(nn.Module):
+    """ 
+    communication + computation
+    n_embd: embedding dimension, n_heads: number of heads
+    """
+    def __init__(self, n_embd, n_heads):
+        super().__init__()
+        head_size = n_embd // n_heads
+        self.sa = MultiHeadSelfAttention(n_heads, head_size) # communication
+        self.ffwd = FeedForward(n_embd) # computation
+        self.ln1 = nn.LayerNorm(n_embd)
+        self.ln2 = nn.LayerNorm(n_embd)
+    
+    def forward(self, x): # input is embeddings (B,T,C)
+        x = x + self.sa(self.ln1(x))
+        x = x + self.ffwd(self.ln2(x))
+        return x
+
+
 class BigramLanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        # self.sa_head = Head(n_embd) 
-        self.sa_heads = MultiHeadSelfAttention(n_heads, n_embd // n_heads)
-        self.ffwd = FeedForward(n_embd)
+        # self.blocks = nn.Sequential(
+        #     Block(n_embd, n_heads=4), # hardcoded for now
+        #     Block(n_embd, n_heads=4),
+        #     Block(n_embd, n_heads=4),
+        #     nn.LayerNorm(n_embd), # right before
+        # )
+        self.blocks = nn.Sequential(*[Block(n_embd, n_heads) for _ in range(n_layer)])
+        self.ln = nn.LayerNorm(n_embd) # final layer norm
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
     def forward(self, idx, targets=None):
@@ -127,9 +160,9 @@ class BigramLanguageModel(nn.Module):
         B,T = idx.shape
         tok_emd = self.token_embedding_table(idx) 
         pos_emd = self.position_embedding_table(torch.arange(T)) # (T,C) with 1,2,3...etc
-        x = tok_emd + pos_emd # now has token identies AND positions at which tokens occur -> not useful until self-attention 
-        x = self.sa_heads(x) # (B,T,C)
-        x = self.ffwd(x) # (B,T,C)
+        x = tok_emd + pos_emd # now has token identies AND positions at which tokens occur 
+        x = self.blocks(x)
+        x = self.ln(x)
         logits = self.lm_head(x) # logits becomes (B,T,vocab_size) 
 
         if targets is None:

@@ -47,3 +47,8 @@ Within 4500 iterations, adding multi-headed self-attention with 4 heads size 8 r
 #### Multi headed self attention with a feed forward
 Within 4500 iterations, adding multi-headed self-attention with 4 heads size 8 results in a cross entropy train loss of 2.0813 valiation loss of 2.1042. The text is beginning to resemble English and in dialouge format.
 
+#### Transformer block 
+Within 4500 iterations, adding multiple blocks of attention + feed forward, along with residual connections results in a cross entropy train loss of 1.8732 valiation loss of 1.9530. The text looks like English with some identifiable words, but still nothing coherent.
+
+#### Transformer block 
+Within 4500 iterations, adding multiple blocks of attention + feed forward, along with residual connections results in a cross entropy train loss of 1.8732 valiation loss of 1.9530. The text looks like English with some identifiable words, but still nothing coherent.
