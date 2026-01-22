@@ -4,11 +4,7 @@
 
 Code based on Andrej Karpathy Neural Networks Zero to Hero Playlist on Youtube
 
-Interested in how large language models work under the hood
-
-Created a language model that models Ernest Hemingway's writing
-
-Without a GPU, how close can I get?
+Created a language model that models Ernest Hemingway's writing. 
 
 ## bigram.py
 
@@ -50,5 +46,4 @@ Within 4500 iterations, adding multi-headed self-attention with 4 heads size 8 r
 #### Transformer block 
 Within 4500 iterations, adding multiple blocks of attention + feed forward, along with residual connections results in a cross entropy train loss of 1.8732 valiation loss of 1.9530. The text looks like English with some identifiable words, but still nothing coherent.
 
-#### Transformer block 
-Within 4500 iterations, adding multiple blocks of attention + feed forward, along with residual connections results in a cross entropy train loss of 1.8732 valiation loss of 1.9530. The text looks like English with some identifiable words, but still nothing coherent.
+The final version adds in dropout and layer normalization before the transformations. 
