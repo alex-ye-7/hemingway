@@ -2,13 +2,7 @@
 
 ## Alexander Ye
 
-Code based on Andrej Karpathy Neural Networks Zero to Hero Playlist on Youtube
-
-Interested in how large language models work under the hood
-
-Created a language model that models Ernest Hemingway's writing
-
-Without a GPU, how close can I get?
+Created a language model that models Ernest Hemingway's writing. Code based on Andrej Karpathy
 
 ## bigram.py
 
@@ -34,9 +28,9 @@ So for example, if we have a block of tokens encoded as tensor([67, 64, 28, 16, 
 
 ## bigram_v2.py
 
-The bigram language model version 2 applies the concept of self-attention to improve the context-awareness of the model. 
+The bigram language model version 2 applies the concept of self-attention to improve the context-awareness of the model. This involves adding positional encoding on top of existing token identiy embeddings. We then implement a head of self-attention, which utilizes the key, query, and value vectors. 
 
-This involves adding positional encoding on top of existing token identiy embeddings. We then implement a head of self-attention, which utilizes the key, query, and value vectors. 
+### Expereiments 
 
 #### Single head of self attention 
 Within 4500 iterations, adding a single-head of self-attention of head size 32 results in a cross entropy train loss of 2.2216 and valiation loss of 2.2162. The text is still indecipherable though. 
@@ -50,5 +44,4 @@ Within 4500 iterations, adding multi-headed self-attention with 4 heads size 8 r
 #### Transformer block 
 Within 4500 iterations, adding multiple blocks of attention + feed forward, along with residual connections results in a cross entropy train loss of 1.8732 valiation loss of 1.9530. The text looks like English with some identifiable words, but still nothing coherent.
 
-#### Transformer block 
-Within 4500 iterations, adding multiple blocks of attention + feed forward, along with residual connections results in a cross entropy train loss of 1.8732 valiation loss of 1.9530. The text looks like English with some identifiable words, but still nothing coherent.
+The final version adds in dropout and layer normalization before the transformations. 

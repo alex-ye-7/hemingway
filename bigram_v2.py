@@ -7,20 +7,20 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 # Hyperparameters
-batch_size = 4 # how many indepedent sequences can you process in parallel?
-block_size = 8 # how big of a context do you want to train on?
+batch_size = 8 # how many indepedent sequences can you process in parallel?
+block_size = 16 # how big of a context do you want to train on?
 max_iters = 5000 # for training
 learning_rate = 1e-3 # self-attention can't tolerate high lr
 eval_interval = 500 # how often to output loss
 eval_iters = 200 # for estimate_loss, how many tests to average against
-n_embd = 32 # internal embedding dim
+n_embd = 64 # internal embedding dim
 n_heads = 4 # how many heads of attention
 n_layer = 4 # how many layers of network do you want
-dropout = 0.1 # regularization
+dropout = 0.05 # regularization
 
 torch.manual_seed(1337)
 
-with open("./data/hemingway.txt", "r", encoding='utf-8') as f:
+with open("./data/The_Sun_Also_Rises.txt", "r", encoding='utf-8') as f:
     content = f.read()
 
 # Create encoding functions for our model to understand
@@ -105,6 +105,47 @@ class MultiHeadSelfAttention(nn.Module):
         out = torch.cat([h(x) for h in self.heads], dim=-1) # concat along rows
         return self.projection(out)
 
+# A combined `Head` and `MultiHeadAttention` into one class
+# Processes heads in parallel, treating the heads as another batch dimension
+class Attention(nn.Module):
+    def __init__(self, num_heads, head_size):
+        super().__init__()
+        self.num_heads = num_heads
+        self.head_size = head_size
+
+        self.key = nn.Linear(n_embd, num_heads * head_size, bias=False)
+        self.query = nn.Linear(n_embd, num_heads * head_size, bias=False)
+        self.value = nn.Linear(n_embd, num_heads * head_size, bias=False)
+
+        self.register_buffer('tril', torch.tril(torch.ones(block_size,block_size)))
+        self.projection = nn.Linear(num_heads*head_size, n_embd)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x): 
+        B,T,C = x.size() # C = num_heads*head_size
+
+        # Project to all heads at once
+        k = self.key(x) # (B, T, num_heads*head_size)
+        q = self.query(x) # (B, T, num_heads*head_size)
+        v = self.value(x) # (B, T, num_heads*head_size)
+
+        # Reshape
+        k = k.view(B, T, self.num_heads, self.head_size).transpose(1,2) # (B, num_heads, T, head_size)
+        q = q.view(B, T, self.num_heads, self.head_size).transpose(1,2) # (B, num_heads, T, head_size)
+        v = v.view(B, T, self.num_heads, self.head_size).transpose(1,2) # (B, num_heads, T, head_size)
+
+        wei = q @ k.transpose(-2, -1) * (self.head_size**-0.5) # (B,nh,T,16) @ (B,nh,16,T) -> (B,nh,T,T), normalized by 1/sqrt(head_size)
+        wei = wei.masked_fill(self.tril[:T,:T] == 0, float('-inf')) # prevents info from future tokens
+        wei = F.softmax(wei, dim=-1) 
+        wei = self.dropout(wei) 
+        out = wei @ v # (B,nh,T,T) @ (B,nh,T,C) -> (B,nh,T,C)
+
+        # Reshape back to (B,T,C)
+        out = out.transpose(1,2).contiguous() # (B,T,nh,head_size)
+        out = out.view(B,T, self.num_heads*self.head_size) 
+        out = self.projection(out)
+        return out
+
 
 class FeedForward(nn.Module):
     """ linear layer followed by a non-linearity """
@@ -129,7 +170,8 @@ class Block(nn.Module):
     def __init__(self, n_embd, n_heads):
         super().__init__()
         head_size = n_embd // n_heads
-        self.sa = MultiHeadSelfAttention(n_heads, head_size) # communication
+        # self.sa = MultiHeadSelfAttention(n_heads, head_size) # communication
+        self.sa = Attention(n_heads, head_size)
         self.ffwd = FeedForward(n_embd) # computation
         self.ln1 = nn.LayerNorm(n_embd)
         self.ln2 = nn.LayerNorm(n_embd)
@@ -145,12 +187,6 @@ class BigramLanguageModel(nn.Module):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        # self.blocks = nn.Sequential(
-        #     Block(n_embd, n_heads=4), # hardcoded for now
-        #     Block(n_embd, n_heads=4),
-        #     Block(n_embd, n_heads=4),
-        #     nn.LayerNorm(n_embd), # right before
-        # )
         self.blocks = nn.Sequential(*[Block(n_embd, n_heads) for _ in range(n_layer)])
         self.ln = nn.LayerNorm(n_embd) # final layer norm
         self.lm_head = nn.Linear(n_embd, vocab_size)
@@ -206,7 +242,12 @@ for iter in range(max_iters):
     optimizer.step()
 
 # Generate from model
-idx = torch.zeros((1,1), dtype=torch.long) # This starting point limits our batch to one sequence
+# idx = torch.zeros((1,1), dtype=torch.long) # This starting point limits our batch to one sequence
+
+# Generating with some context
+context =  "The old man"
+idx = torch.tensor([encode(context)], dtype=torch.long) 
+
 output_data = decode(model.generate(idx, 400)[0].tolist()) # tolist to convert from tensor to list
 print(output_data)
 
