@@ -2,9 +2,7 @@
 
 ## Alexander Ye
 
-Code based on Andrej Karpathy Neural Networks Zero to Hero Playlist on Youtube
-
-Created a language model that models Ernest Hemingway's writing. 
+Created a language model that models Ernest Hemingway's writing. Code based on Andrej Karpathy
 
 ## bigram.py
 
@@ -30,9 +28,9 @@ So for example, if we have a block of tokens encoded as tensor([67, 64, 28, 16, 
 
 ## bigram_v2.py
 
-The bigram language model version 2 applies the concept of self-attention to improve the context-awareness of the model. 
+The bigram language model version 2 applies the concept of self-attention to improve the context-awareness of the model. This involves adding positional encoding on top of existing token identiy embeddings. We then implement a head of self-attention, which utilizes the key, query, and value vectors. 
 
-This involves adding positional encoding on top of existing token identiy embeddings. We then implement a head of self-attention, which utilizes the key, query, and value vectors. 
+### Expereiments 
 
 #### Single head of self attention 
 Within 4500 iterations, adding a single-head of self-attention of head size 32 results in a cross entropy train loss of 2.2216 and valiation loss of 2.2162. The text is still indecipherable though. 
