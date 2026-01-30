@@ -1,5 +1,5 @@
 import random
-from value import Value
+from micrograd.value import Value
 
 class Module:
     def zero_grad(self):
@@ -19,6 +19,9 @@ class Neuron(Module):
         act = sum((wi*xi for wi,xi in zip(self.weights, x)), self.bias)
         return act.relu()
     
+    def parameters(self): # list of parameters
+        return self.weights + [self.bias]
+
     def __repr__(self):
         return f"ReLU Neuron ({len(self.weights)})"
     
@@ -30,6 +33,12 @@ class Layer(Module):
         outs = [n(x) for n in self.neurons]
         return outs[0] if len(outs) == 1 else outs
     
+    def parameters(self):
+        return [p for n in self.neurons for p in n.parameters()]
+    
+    def __repr__(self):
+        return f"Layer of [{', '.join(str(n) for n in self.neurons)}]"
+    
 class MLP(Module):
     def __init__(self, nin, nouts): # nin is int, nouts is list from layer
         sizes = [nin] + nouts
@@ -39,3 +48,9 @@ class MLP(Module):
         for layer in self.layers:
             x = layer(x)
         return x 
+    
+    def parameters(self):
+        return [p for l in self.layers for p in l.parameters()] 
+    
+    def __repr__(self):
+        return f"MLP of [{', '.join(str(l) for l in self.layers)}]"

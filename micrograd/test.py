@@ -1,15 +1,28 @@
 from value import *
 from nn import * 
+import torch
 
-x1 = Value(2.0)
-x2 = Value(0.0)
-w1 = Value(-3.0)
-w2 = Value(1.0)
-b = Value(6.88)
+def test_sanity_check():
+    x = Value(-4.0)
+    z = 2 * x + 2 + x
+    q = z.relu() + z * x
+    h = (z * z).relu()
+    y = h + q + q * x
+    y.backward()
+    xmg, ymg = x, y
 
-x1w1 = x1*w1 + b 
-print(x1w1)
+    x = torch.Tensor([-4.0]).double()
+    x.requires_grad = True
+    z = 2 * x + 2 + x
+    q = z.relu() + z * x
+    h = (z * z).relu()
+    y = h + q + q * x
+    y.backward()
+    xpt, ypt = x, y
 
-# x = [2.0, 3.0, -1.0]
-# n = MLP(3, [4,4,1])
-# print(n(x))
+    # forward pass went well
+    assert ymg.data == ypt.data.item()
+    # backward pass went well
+    assert xmg.grad == xpt.grad.item()
+
+test_sanity_check()

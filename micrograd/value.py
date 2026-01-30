@@ -1,5 +1,4 @@
 # Alexander Ye
-import math
 
 class Value():
     """
@@ -19,7 +18,7 @@ class Value():
         def _backward():
             self.grad += out.grad
             other.grad += out.grad
-        out._backward = _backward()
+        out._backward = _backward # mistake, just pass the function, otherwise NoneType
         return out
     
     def __mul__(self, other):
@@ -29,7 +28,7 @@ class Value():
         def _backward():
             self.grad += other.data * out.grad
             other.grad += self.data * out.grad
-        out._backward = _backward()
+        out._backward = _backward
         return out
     
     def __pow__(self, other): # other is an int/float
@@ -38,7 +37,7 @@ class Value():
 
         def _backward():
             self.grad += (other * self.data**(other-1)) * out.grad
-        out._backward = _backward()
+        out._backward = _backward
         return out
 
     # def tanh(self):
@@ -56,7 +55,7 @@ class Value():
 
         def _backward():
             self.grad += (out.data > 0) * out.grad
-        out._backward = _backward()
+        out._backward = _backward
         return out
 
     
@@ -70,8 +69,9 @@ class Value():
                     build_topo(child)
                 topo.append(v)
         build_topo(self)
-        
-        self.grad = 1
+
+        # one variable at a time and apply chain rule
+        self.grad = 1 
         for v in reversed(topo):
             v._backward()
 
