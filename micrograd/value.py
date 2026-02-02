@@ -1,6 +1,6 @@
 # Alexander Ye
 
-class Value():
+class Value:
     """
     stores a scalar value and its gradient
     """
@@ -94,4 +94,4 @@ class Value():
         return other * self**-1
     
     def __repr__(self):
-        return f"Value(data={self.data})"
+        return f"Value(data={self.data}, grad={self.grad})"
