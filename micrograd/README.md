@@ -1,1 +1,0 @@
-Building tiny autograd engine and neural net library
