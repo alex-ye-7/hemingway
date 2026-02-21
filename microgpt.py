@@ -83,7 +83,7 @@ params = [p for mat in state_dict.values() for row in mat for p in row] # list[V
 print(f"num params: {len(params)}")
 
 # Architecture 
-def linear(x, w): # w @ x, Wx, nn.Linear(in, out)
+def linear(x, w): # w @ x, Wx
     return [sum(wi*xi for wi,xi in zip(wo,x)) for wo in w] 
 
 def softmax(logits): # numerical stability trick by using max value 
@@ -97,45 +97,46 @@ def rmsnorm(x):
     scale = (ms + 1e-5) ** -0.5 # 1e-5 safety floor on denom 
     return [xi * scale for xi in x]
 
-def gpt(token_id, pos_id, keys, values): 
-    tok_emb = state_dict['wte'][token_id] # 0..vocab_size-1
-    pos_emb = state_dict['wpe'][pos_id] # 0...block_size-1 
+# Assumption in training loop is that gpt() takes one char at a time. Alternatively, could batch
+def gpt(token_id, pos_id, keys, values): # keys and values matricies (n_layer, T, n_embd), where T from 0 to block_size
+    tok_emb = state_dict['wte'][token_id] # (1, n_embd)
+    pos_emb = state_dict['wpe'][pos_id] # (1, n_embd)
     x = [t + p for t, p in zip(tok_emb, pos_emb)] 
     x = rmsnorm(x)
     for li in range(n_layer):
-        x_residual = x
+        x_residual = x # still (1, n_embd)
         x = rmsnorm(x) 
-        q = linear(x, state_dict[f'layer{li}.attn_wq'])
-        k = linear(x, state_dict[f'layer{li}.attn_wk'])
+        q = linear(x, state_dict[f'layer{li}.attn_wq']) # (1, n_embd) @ (n_embd, n_embd) -> (1, n_embd)
+        k = linear(x, state_dict[f'layer{li}.attn_wk']) 
         v = linear(x, state_dict[f'layer{li}.attn_wv'])
-        keys[li].append(k)
-        values[li].append(v)
-        x_attn = [] # (n_embd, n_embd)
+        keys[li].append(k) # keys/values: (n_layer, 1, n_embd) ->  (n_layer, 2, n_embd) ... ->  (n_layer, T, n_embd)
+        values[li].append(v) 
+        x_attn = [] 
         # attention
         for h in range(n_head):
-            hs = h * head_dim # start
-            q_h = q[hs:hs+head_dim]
-            k_h = [ki[hs:hs+head_dim] for ki in keys[li]]
-            v_h = [vi[hs:hs+head_dim] for vi in values[li]]
-            attn_logits = [sum(q_h[j] * k_h[t][j] for j in range(head_dim)) / head_dim**0.5 for t in range(len(k_h))] # q @ k.T / sqrt(d_k)
-            attn_weights = softmax(attn_logits)
+            hs = h * head_dim # find the slice 
+            q_h = q[hs:hs+head_dim] # (1, head_dim)
+            k_h = [ki[hs:hs+head_dim] for ki in keys[li]] # (T, head_dim)
+            v_h = [vi[hs:hs+head_dim] for vi in values[li]] # (T, head_dim)
+            attn_logits = [sum(q_h[j] * k_h[t][j] for j in range(head_dim)) / head_dim**0.5 for t in range(len(k_h))] # q @ k.T -> (1, T)
+            attn_weights = softmax(attn_logits) # (1, T)
              # matmul by hand -> weighted sum of each feature over time steps
-            head_out = [sum(attn_weights[t] * v_h[t][j] for t in range(len(v_h)) for j in range(head_dim))]
-            x_attn.extend(head_out)
-        x = linear(x_attn, state_dict[f'layer{li}.attn_wo']) 
+            head_out = [sum(attn_weights[t] * v_h[t][j] for t in range(len(v_h)) for j in range(head_dim))] # out @ v -> (1, head_dim)
+            x_attn.extend(head_out) # x_attn becomes (1, n_head * head_dim = n_embd)
+        x = linear(x_attn, state_dict[f'layer{li}.attn_wo']) # still (1, n_embd) 
         x = [a + b for a, b in zip(x, x_residual)] 
         # MLP
         x_residual = x 
         x = rmsnorm(x)
-        x = linear(x, state_dict[f'layer{li}.mlp_fc1']) 
+        x = linear(x, state_dict[f'layer{li}.mlp_fc1']) # (1, 4*n_embd)
         x = [xi.relu() for xi in x]
-        x = linear(x, state_dict[f'layer{li}.mlp_fc2'])
+        x = linear(x, state_dict[f'layer{li}.mlp_fc2']) # (1, n_embd)
         x = [a + b for a, b in zip(x, x_residual)]
-    logits = linear(x, state_dict[f'lm_head']) # (batch, n_embd) -> (batch, vocab_size)
+    logits = linear(x, state_dict[f'lm_head']) # (1, n_embd) -> (1, vocab_size)
     return logits 
 
 lr, beta1, beta2, eps_adam = 0.01, 0.85, 0.99, 1e-8 # Adam optimizer parameters
-m = [0.0] * len(params) # first moment buffer
+m = [0.0] * len(params) # first moment buffer -> think of as temp variable that stores previous step's mean and variance
 v = [0.0] * len(params) # second moment buffer 
 
 num_steps = 1000 # training steps
@@ -162,12 +163,12 @@ for step in range(num_steps):
     # Adam
     lr_t = lr * (1 - step / num_steps) # linear lr decay
     for i, p in enumerate(params):
-        m[i] = beta1 * m[i] + (1 - beta1) * p.grad # implicit m_i derived from m_(i-1)
+        m[i] = beta1 * m[i] + (1 - beta1) * p.grad 
         v[i] = beta2 * v[i] + (1 - beta2) * p.grad ** 2
-        m_hat = m[i] / (1 - beta1 ** (step + 1)) # because step is zero indexed
+        m_hat = m[i] / (1 - beta1 ** (step + 1)) # step is zero indexed
         y_hat = v[i] / (1 - beta2 ** (step + 1))
-        p.data -= lr * m_hat / (y_hat ** 0.5 + eps_adam) # remember to push in negative direction
-        p.grad = 0 # optimizer.zero_grad?
+        p.data -= lr * m_hat / (y_hat ** 0.5 + eps_adam) # remember to push in negative gradient direction
+        p.grad = 0 # optimizer.zero_grad
 
     print(f"step {step+1:4d} / {num_steps:4d} | loss {loss.data:4f}", end='\r')
 
