@@ -17,7 +17,7 @@ learning_rate = 1e-2
 
 torch.manual_seed(1337)
 
-with open("./data/snows.txt", "r", encoding='utf-8') as f:
+with open("./data/hemingway.txt", "r", encoding='utf-8') as f:
     content = f.read()
 
 # Create encoding functions for our model to understand

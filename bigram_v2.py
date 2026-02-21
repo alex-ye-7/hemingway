@@ -134,7 +134,7 @@ class Attention(nn.Module):
         q = q.view(B, T, self.num_heads, self.head_size).transpose(1,2) # (B, num_heads, T, head_size)
         v = v.view(B, T, self.num_heads, self.head_size).transpose(1,2) # (B, num_heads, T, head_size)
 
-        wei = q @ k.transpose(-2, -1) * (self.head_size**-0.5) # (B,nh,T,16) @ (B,nh,16,T) -> (B,nh,T,T), normalized by 1/sqrt(head_size)
+        wei = q @ k.transpose(-2, -1) * (self.head_size**-0.5) # (B,nh,T,16) @ (B,nh,16,T) -> (B,nh,T,T)
         wei = wei.masked_fill(self.tril[:T,:T] == 0, float('-inf')) # prevents info from future tokens
         wei = F.softmax(wei, dim=-1) 
         wei = self.dropout(wei) 
